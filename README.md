@@ -1,71 +1,44 @@
-# project-solaris README
+<div align="center">
 
-This is the README for your extension "project-solaris". After writing up a brief description, we recommend including the following sections.
+<img src="resources/sun-icon.svg" alt="Project Solaris" width="128">
+
+# Project Solaris
+
+</div>
+
+**Project Solaris** reimagines your file explorer as an interactive, physics-based star system. Transform your boring file lists into a deep space exploration experience right inside VS Code.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+### The Solar System View
 
-For example if there is an image subfolder under your extension project workspace:
+Navigate your current workspace as a gravitational system.
 
-\!\[feature X\]\(images/feature-x.png\)
+-   **Stars (Folders)**: Massive, glowing suns that anchor the system.
+-   **Planets (Files)**: Orbiting bodies that drift around their parent folders.
+-   **Physics-Based Layout**:
+    -   **Mass**: Larger files appear as larger bodies.
+    -   **Orbit**: Recently modified files orbit closer to the star (inner heat zone), while older files drift to the cold outer edges.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+### Interactive Exploration
 
-## Requirements
+-   **Pan & Zoom**: Use your mouse wheel to zoom (0.1x to 4x) and click-drag to pan across the cosmos.
+-   **Click to Open**: Click on any planet to instantly open the file in your editor.
+-   **Smart Tooltips**: Hover over any celestial body to see its name, type, and size.
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+### Deep Space Warning
+
+Don't stray too far! The simulation is constrained by a **Deep Space Boundary**. Venturing to the edge reveals the warning systems, keeping your file system contained within observable space.
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+This extension currently offers a plug-and-play experience with zero configuration needed.
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+-   Very large node_modules galaxies may cause high GPU usage (but look spectacular).
+-   "Black hole" files (0 bytes) are rendered as tiny asteroids.
 
 ---
 
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**Enjoy the view!**

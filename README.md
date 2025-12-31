@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="resources/sun-icon.svg" alt="Project Solaris" width="128">
+<img src="resources/sun-icon.png" alt="Project Solaris" width="128">
 
 # Project Solaris
 

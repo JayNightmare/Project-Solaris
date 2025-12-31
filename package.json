@@ -9,6 +9,18 @@
     "categories": [
         "Other"
     ],
+    "icon": "resources/sun-icon.svg",
+    "publisher": "JayNightmare",
+    "author": "Jay",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/jaynightmare/project-solaris.git"
+    },
+    "homepage": "https://github.com/jaynightmare/project-solaris",
+    "bugs": {
+        "url": "https://github.com/jaynightmare/project-solaris/issues"
+    },
     "activationEvents": [
         "onView:solaris-sidebar"
     ],

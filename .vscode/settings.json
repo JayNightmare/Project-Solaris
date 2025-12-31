@@ -1,0 +1,42 @@
+// Place your settings in this file to overwrite default and user settings.
+{
+    "files.exclude": {
+        "out": false // set this to true to hide the "out" folder with the compiled JS files
+    },
+    "search.exclude": {
+        "out": true // set this to false to include "out" folder in search results
+    },
+    // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
+    "typescript.tsc.autoDetect": "off",
+    "workbench.colorCustomizations": {
+        "[Default Dark Modern]": {
+            "tab.activeBorderTop": "#00FF00",
+            "tab.unfocusedActiveBorderTop": "#00FF0088",
+            "textCodeBlock.background": "#00000055"
+        },
+        "editor.wordHighlightStrongBorder": "#FF6347",
+        "editor.wordHighlightBorder": "#FFD700",
+        "editor.selectionHighlightBorder": "#A9A9A9",
+        "terminal.background": "#282936",
+        "terminal.foreground": "#E9E9F4",
+        "terminalCursor.background": "#E9E9F4",
+        "terminalCursor.foreground": "#E9E9F4",
+        "terminal.ansiBlack": "#282936",
+        "terminal.ansiBlue": "#62D6E8",
+        "terminal.ansiBrightBlack": "#626483",
+        "terminal.ansiBrightBlue": "#62D6E8",
+        "terminal.ansiBrightCyan": "#A1EFE4",
+        "terminal.ansiBrightGreen": "#EBFF87",
+        "terminal.ansiBrightMagenta": "#B45BCF",
+        "terminal.ansiBrightRed": "#EA51B2",
+        "terminal.ansiBrightWhite": "#F7F7FB",
+        "terminal.ansiBrightYellow": "#00F769",
+        "terminal.ansiCyan": "#A1EFE4",
+        "terminal.ansiGreen": "#EBFF87",
+        "terminal.ansiMagenta": "#B45BCF",
+        "terminal.ansiRed": "#EA51B2",
+        "terminal.ansiWhite": "#E9E9F4",
+        "terminal.ansiYellow": "#00F769",
+        "statusBar.background": "#000000"
+    }
+}

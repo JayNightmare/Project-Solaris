@@ -18,7 +18,7 @@ export class FileSystemCrawler {
      * @param uri The URI of the directory to crawl
      * @returns A promise resolving to the root node of the system
      */
-    public async crawl(uri: vscode.Uri): Promise<SolarSystemNode> {
+    public async crawl(uri: vscode.Uri, ignore: any): Promise<SolarSystemNode> {
         const stat = await vscode.workspace.fs.stat(uri);
         const name = uri.path.split("/").pop() || "Root";
 
@@ -31,18 +31,27 @@ export class FileSystemCrawler {
             children: [],
         };
 
-        return this._crawlRecursive(uri, root);
+        return this._crawlRecursive(uri, root, ignore);
     }
 
     private async _crawlRecursive(
         uri: vscode.Uri,
-        parent: SolarSystemNode
+        parent: SolarSystemNode,
+        ignore: any
     ): Promise<SolarSystemNode> {
         try {
             const children = await vscode.workspace.fs.readDirectory(uri);
 
             for (const [name, type] of children) {
                 const childUri = vscode.Uri.joinPath(uri, name);
+
+                // Use workspace.asRelativePath to get a path suitable for the ignore package
+                const relativePath = vscode.workspace.asRelativePath(childUri);
+
+                // Check if ignored
+                if (ignore && ignore.ignores(relativePath)) {
+                    continue;
+                }
 
                 if (type === vscode.FileType.Directory) {
                     // Recursively crawl subdirectories (Stars)
@@ -59,9 +68,11 @@ export class FileSystemCrawler {
                     // We recursively map the folder, but for the visualization tree,
                     // we might want to flatten it or keep it nested depending on D3 needs.
                     // For now, let's keep it nested.
+                    // For now, let's keep it nested.
                     const populatedStar = await this._crawlRecursive(
                         childUri,
-                        subStar
+                        subStar,
+                        ignore
                     );
                     parent.children?.push(populatedStar);
                 } else if (type === vscode.FileType.File) {

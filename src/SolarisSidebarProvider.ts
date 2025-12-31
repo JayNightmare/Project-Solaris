@@ -20,16 +20,23 @@ export class SolarisSidebarProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Initialize Crawler
+        // Initialize Crawler (Wait for Webview to be Ready)
         console.log(
-            ">> Solaris << Initializing Crawler from resolveWebviewView"
+            ">> Solaris << Initializing Crawler. Waiting for 'onReady' signal..."
         );
-        this._updateWebview(webviewView.webview);
+        // Removed direct call to this._updateWebview(webviewView.webview);
 
         // Message Listener
         webviewView.webview.onDidReceiveMessage(
-            (data: { type: string; value: any }) => {
+            async (data: { type: string; value: any }) => {
                 switch (data.type) {
+                    case "onReady": {
+                        console.log(
+                            ">> Solaris << Webview is Ready. Starting update..."
+                        );
+                        this._updateWebview(webviewView.webview);
+                        break;
+                    }
                     case "onInfo": {
                         if (!data.value) {
                             return;
@@ -61,6 +68,142 @@ export class SolarisSidebarProvider implements vscode.WebviewViewProvider {
                             "vscode.open",
                             vscode.Uri.file(data.value)
                         );
+                        break;
+                    }
+                    case "deleteFile": {
+                        const filePath = data.value;
+                        if (!filePath) return;
+                        vscode.window
+                            .showWarningMessage(
+                                `Are you sure you want to delete '${filePath}'?`,
+                                { modal: true },
+                                "Delete"
+                            )
+                            .then(async (selection) => {
+                                if (selection === "Delete") {
+                                    try {
+                                        await vscode.workspace.fs.delete(
+                                            vscode.Uri.file(filePath),
+                                            { recursive: true, useTrash: true }
+                                        );
+                                        this._updateWebview(
+                                            webviewView.webview
+                                        );
+                                    } catch (e) {
+                                        vscode.window.showErrorMessage(
+                                            "Failed to delete file: " + e
+                                        );
+                                    }
+                                }
+                            });
+                        break;
+                    }
+                    case "renameFile": {
+                        const filePath = data.value;
+                        if (!filePath) return;
+                        const uri = vscode.Uri.file(filePath);
+                        const oldName = uri.path.split("/").pop();
+                        vscode.window
+                            .showInputBox({
+                                prompt: "Enter new name",
+                                value: oldName,
+                            })
+                            .then(async (newName) => {
+                                if (!newName || newName === oldName) return;
+                                const newPath = vscode.Uri.file(
+                                    filePath.substring(
+                                        0,
+                                        filePath.lastIndexOf("/") + 1
+                                    ) + newName
+                                );
+                                try {
+                                    await vscode.workspace.fs.rename(
+                                        uri,
+                                        newPath
+                                    );
+                                    this._updateWebview(webviewView.webview);
+                                } catch (e) {
+                                    vscode.window.showErrorMessage(
+                                        "Failed to rename file: " + e
+                                    );
+                                }
+                            });
+                        break;
+                    }
+                    case "createFile": {
+                        const folderPath = data.value; // Parent folder
+                        if (!folderPath) return;
+                        vscode.window
+                            .showInputBox({
+                                prompt: "Enter new file name",
+                            })
+                            .then(async (fileName) => {
+                                if (!fileName) return;
+                                const newUri = vscode.Uri.file(
+                                    folderPath + "/" + fileName
+                                );
+                                try {
+                                    await vscode.workspace.fs.writeFile(
+                                        newUri,
+                                        new Uint8Array()
+                                    );
+                                    this._updateWebview(webviewView.webview);
+                                } catch (e) {
+                                    vscode.window.showErrorMessage(
+                                        "Failed to create file: " + e
+                                    );
+                                }
+                            });
+                        break;
+                    }
+                    case "createFolder": {
+                        const folderPath = data.value; // Parent folder
+                        if (!folderPath) return;
+                        vscode.window
+                            .showInputBox({
+                                prompt: "Enter new folder name",
+                            })
+                            .then(async (folderName) => {
+                                if (!folderName) return;
+                                const newUri = vscode.Uri.file(
+                                    folderPath + "/" + folderName
+                                );
+                                try {
+                                    await vscode.workspace.fs.createDirectory(
+                                        newUri
+                                    );
+                                    this._updateWebview(webviewView.webview);
+                                } catch (e) {
+                                    vscode.window.showErrorMessage(
+                                        "Failed to create folder: " + e
+                                    );
+                                }
+                            });
+                        break;
+                    }
+                    case "moveFile": {
+                        const { source, destination } = data.value;
+                        if (!source || !destination) return;
+                        try {
+                            const sourceUri = vscode.Uri.file(source);
+                            // Destination is the target folder. We need to append the filename.
+                            const fileName = source.split(/[/\\]/).pop();
+                            // Ensure destination ends with slash if it doesn't (though Uri.file handles paths well, string concat needs care)
+                            // Actually, let's treat 'destination' as the PARENT folder to move INTO.
+                            const destUri = vscode.Uri.file(
+                                destination + "/" + fileName
+                            );
+
+                            await vscode.workspace.fs.rename(
+                                sourceUri,
+                                destUri
+                            );
+                            this._updateWebview(webviewView.webview);
+                        } catch (e) {
+                            vscode.window.showErrorMessage(
+                                "Failed to move file: " + e
+                            );
+                        }
                         break;
                     }
                 }
@@ -125,9 +268,40 @@ export class SolarisSidebarProvider implements vscode.WebviewViewProvider {
 
         try {
             console.log(">> Solaris << Starting FileSystemCrawler crawl...");
-            const crawler = new FileSystemCrawler();
+
+            // Initialize ignore parser
+            const ignore = require("ignore");
+            const ig = ignore();
             const rootUri = vscode.workspace.workspaceFolders[0].uri;
-            const data = await crawler.crawl(rootUri);
+
+            // Load .gitignore and .ignore if they exist
+            try {
+                const gitignoreUri = vscode.Uri.joinPath(rootUri, ".gitignore");
+                const gitignoreData = await vscode.workspace.fs.readFile(
+                    gitignoreUri
+                );
+                ig.add(gitignoreData.toString());
+                console.log(">> Solaris << Loaded .gitignore");
+            } catch (e) {
+                // Ignore if file doesn't exist
+            }
+
+            try {
+                const ignoreUri = vscode.Uri.joinPath(rootUri, ".ignore");
+                const ignoreData = await vscode.workspace.fs.readFile(
+                    ignoreUri
+                );
+                ig.add(ignoreData.toString());
+                console.log(">> Solaris << Loaded .ignore");
+            } catch (e) {
+                // Ignore if file doesn't exist
+            }
+
+            // Always ignore .git
+            ig.add(".git");
+
+            const crawler = new FileSystemCrawler();
+            const data = await crawler.crawl(rootUri, ig);
             console.log(
                 `>> Solaris << Crawl complete. Root node: ${data.name}, Children: ${data.children?.length}`
             );

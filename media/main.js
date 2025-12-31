@@ -12,6 +12,10 @@ const d3 = window.d3;
 
     // @ts-ignore
     const vscode = acquireVsCodeApi();
+
+    // Signal to the extension that the webview is ready to receive messages
+    vscode.postMessage({ type: "onReady" });
+
     /** @type {HTMLCanvasElement | null} */
     const canvas = /** @type {HTMLCanvasElement} */ (
         document.getElementById("universe")
@@ -63,6 +67,13 @@ const d3 = window.d3;
         .on("zoom", (/** @type {any} */ event) => {
             transform = event.transform;
             ticked(); // Re-render on zoom
+
+            // Reset focus if zoomed out too far
+            if (transform.k <= 0.15) {
+                // Threshold slightly above min to allow "snap"
+                // Ideally we animate this, but for now just let the user know/feel it?
+                // Actually, let's just use it as a trigger if we moved AWAY.
+            }
         });
 
     // Apply zoom to canvas
@@ -91,6 +102,26 @@ const d3 = window.d3;
             y: centerY + (Math.random() * universeR * 2 - universeR),
             size: Math.random() * 2,
             opacity: Math.random(),
+        });
+    }
+
+    // --- UI CONTROLS ---
+    // Speed Slider
+    const controls = document.createElement("div");
+    controls.className = "controls";
+    // Using string concat for readability
+    controls.innerHTML = `
+        <label for="speed-slider">Warp Speed</label>
+        <input type="range" id="speed-slider" min="0" max="5" step="0.1" value="1">
+    `;
+    document.body.appendChild(controls);
+
+    let speedMultiplier = 1;
+    const speedSlider = document.getElementById("speed-slider");
+    if (speedSlider) {
+        speedSlider.addEventListener("input", (e) => {
+            // @ts-ignore
+            speedMultiplier = parseFloat(e.target.value);
         });
     }
 
@@ -149,7 +180,9 @@ const d3 = window.d3;
         if (loading) {
             loading.style.opacity = "0";
             setTimeout(() => {
-                if (loading) loading.style.display = "none";
+                if (loading) {
+                    loading.style.display = "none";
+                }
             }, 500);
         }
         rootNode = data;
@@ -183,46 +216,163 @@ const d3 = window.d3;
 
     // --- PHYSICS ENGINE ---
 
+    // --- ORBITAL ENGINE ---
+
     function startSimulation() {
-        if (!d3) return;
-        if (simulation) simulation.stop();
+        if (!d3) {
+            return;
+        }
+        if (simulation) {
+            simulation.stop();
+        }
 
-        // Custom Force: Orbital Hold
-        /** @type {(alpha: number) => void} */
-        const forceOrbit = (alpha) => {
-            links.forEach((/** @type {any} */ link) => {
-                const source = link.source;
-                const target = link.target;
-                if (target.type === "planet") {
-                    const dx = target.x - source.x;
-                    const dy = target.y - source.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    const angle = Math.atan2(dy, dx);
-                    const diff = dist - target.tRadius;
-                    const k = alpha * 0.5;
-                    target.x -= Math.cos(angle) * diff * k;
-                    target.y -= Math.sin(angle) * diff * k;
+        // 1. Setup Hierarchy & Orbits
+        setupOrbits(rootNode);
+
+        // 2. Start Animation Loop
+        simulation = d3.timer((/** @type {number} */ elapsed) => {
+            const dt = elapsed - lastTime;
+            lastTime = elapsed;
+
+            // Accumulate orbit time based on speed multiplier
+            orbitTime += dt * speedMultiplier;
+
+            updateOrbits(rootNode, dt, orbitTime); // Pass dt if we need smooth movement, or orbitTime for absolute position
+            ticked();
+        });
+    }
+
+    // Separate Time tracking for variable speed
+    let orbitTime = 0;
+    let lastTime = 0;
+
+    /**
+     * Recursive function to setup initial orbit properties
+     * @param {any} node
+     * @param {number} depth
+     */
+    function setupOrbits(node, depth = 0) {
+        node.depth = depth;
+
+        // Root Node configuration (Galactic Center)
+        if (depth === 0) {
+            node.x = 0;
+            node.y = 0;
+            node.radius = 40; // Supermassive Black Hole / Center
+            node.color = "#000";
+            node.glow = "#ed1c24"; // Red Accretion Disk
+            node.orbitRadius = 0;
+            node.angle = 0;
+            node.speed = 0;
+
+            // Name Override: Ensure it shows workspace name clearly
+            // The crawler sends the leaf name, but lets make sure.
+            // (No change needed if crawler is correct, but visualization might want valid label)
+        }
+
+        if (node.children && node.children.length > 0) {
+            // Count children to determine orbit spacing
+            const count = node.children.length;
+
+            // Base radius for this node's children layer
+            // If deeper, orbits can be tighter? Or wider?
+            // Let's make top level wide.
+            let baseOrbitConfig = {
+                startRadius: 100, // Distance from parent center
+                spacing: 50,
+            };
+
+            // Adjust based on node type/depth
+            if (depth === 0) {
+                baseOrbitConfig.startRadius = 200;
+                baseOrbitConfig.spacing = 150; // Give stars room
+            } else if (node.type === "star") {
+                baseOrbitConfig.startRadius = 120;
+                baseOrbitConfig.spacing = 40;
+            }
+
+            // Distribute children in orbits
+            // Simple approach: Place them all on Rings based on their index?
+            // Or one ring per depth?
+            // User wants "orbiting objects", implies moving.
+            // Let's create varying orbit radii so they don't collide too much.
+
+            node.children.forEach(
+                (/** @type {any} */ child, /** @type {number} */ i) => {
+                    // Distribute angle evenly initially to avoid clumping
+                    child.angle = (i / count) * Math.PI * 2;
+
+                    // Variable Radius to add "Natural" feel
+                    // Cycle through a few "tracks"
+                    const track = i % 3;
+                    child.orbitRadius =
+                        baseOrbitConfig.startRadius +
+                        i * (baseOrbitConfig.spacing / 2) +
+                        Math.random() * 20;
+
+                    // Random Speed (some go cw, some ccw)
+                    // Deeper nodes orbit faster? Kepler says inner is faster.
+                    // Let's stick to "Visual" physics.
+                    const speedBase = 0.0005;
+                    const direction = Math.random() > 0.5 ? 1 : -1;
+                    child.speed =
+                        (speedBase + Math.random() * 0.001) * direction;
+
+                    // Visual Properties
+                    if (child.type === "star") {
+                        child.radius = 20 - depth * 2; // get smaller as we go deep
+                        if (child.radius < 10) {
+                            child.radius = 10;
+                        }
+                        child.color = "#f39c12";
+                        child.glow = "#e67e22";
+                    } else {
+                        // Planet
+                        child.radius = Math.max(4, Math.min(child.size, 10));
+                        child.color = d3.interpolatePlasma(Math.random());
+                    }
+
+                    // Recursively setup children
+                    setupOrbits(child, depth + 1);
                 }
-            });
-        };
+            );
+        }
+    }
 
-        simulation = d3
-            .forceSimulation(nodes)
-            .force(
-                "link",
-                d3
-                    .forceLink(links)
-                    .id((/** @type {any} */ d) => d.path)
-                    .strength(0)
-            )
-            .force("charge", d3.forceManyBody().strength(-30))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("orbit", forceOrbit)
-            .on("tick", ticked);
+    /**
+     * @param {any} node
+     * @param {number} dt
+     * @param {number} simTime
+     */
+    function updateOrbits(node, dt, simTime) {
+        if (!node) {
+            return;
+        }
+
+        if (node.children) {
+            node.children.forEach((/** @type {any} */ child) => {
+                // Update Angle
+                // Use simTime for absolute position calculation based on start
+                // Or accumulate manually. Since we are passing simTime which increments by dt*speed,
+                // we can just recalculate orbit position.
+                // Angle = InitialAngle + (Speed * SimTime)
+                child.currentAngle = child.angle + child.speed * simTime;
+
+                // Calculate Position relative to Parent
+                child.x =
+                    node.x + Math.cos(child.currentAngle) * child.orbitRadius;
+                child.y =
+                    node.y + Math.sin(child.currentAngle) * child.orbitRadius;
+
+                updateOrbits(child, dt, simTime);
+            });
+        }
     }
 
     function ticked() {
-        if (!ctx) return;
+        if (!ctx) {
+            return;
+        }
 
         ctx.save();
         ctx.clearRect(0, 0, width, height);
@@ -239,94 +389,187 @@ const d3 = window.d3;
         });
         ctx.globalAlpha = 1;
 
-        // Draw Deep Space Warning Boundary
-        // Simulation centers at (width/2, height/2) so we need to account for that effectively becoming (0,0) in our logic if we forced center,
-        // BUT d3 forceCenter pushes nodes to (width/2, height/2).
-        // Let's adjust: The universe box should be centered at width/2, height/2.
-        const simCenterX = width / 2;
-        const simCenterY = height / 2;
+        // Draw Deep Space Warning (Same as before)
+        const simCenterX = width / 2; // Actually we are centered at 0,0 in world space
+        // wait, we forceCenter'd before. Now our root is at 0,0.
+        // So the universe boundary should be around 0,0.
+        // In previous implementation, D3 force center pushed to width/2, height/2.
+        // We need to decide: Is Root at World (0,0)? Yes.
+        // But `zoom` needs to center it. `d3.zoomIdentity` starts at 0,0 top-left?
+        // Usually we want initial transform to center (0,0) in the middle of the screen.
+        // We can do that by initializing `transform` or simply applying an offset in `ticked` before transform?
+        // Better: Initialize zoom transform to center the view.
+        // For now, let's assume user pans. Or we can hard simulate `translate(width/2, height/2)` in our logic.
+        // Actually, typical D3 Zoom with center (0,0) world needs:
+        // ctx.translate(width/2, height/2); ctx.transform(transform...);
+        // Let's adjust the Ticked translation:
 
-        const bX = simCenterX - universeR;
-        const bY = simCenterY - universeR;
-        const bS = universeR * 2;
+        const outputX = transform.x + width / 2;
+        const outputY = transform.y + height / 2;
 
-        ctx.strokeStyle = "rgba(255, 0, 0, 0.6)"; // Red
+        // Reset transform for drawing to get clean slate? No, stick to accumulated transform.
+        // Let's just shift the "Camera" to center 0,0.
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity
+        ctx.clearRect(0, 0, width, height);
+        ctx.translate(outputX, outputY); // Move 0,0 to center of screen + pan
+        ctx.scale(transform.k, transform.k);
+
+        // Now 0,0 is center of screen.
+
+        // Draw Orbits (Optional Visual Aid)
+        // Need to traverse to draw orbits.
+        drawOrbits(rootNode);
+
+        // Draw Links?
+        // With orbits, links are less necessary visual metaphors, but helpful for tracing.
+        // Links should go Parent (0,0) -> Child.
+        // Hierarchy is implicitly shown by Orbit Center.
+        // Let's draw faint lines.
+        drawLinks(rootNode);
+
+        // Draw Nodes
+        drawNodes(rootNode);
+
+        // Draw Deep Space Boundary around 0,0
+        ctx.strokeStyle = "rgba(255, 0, 0, 0.6)";
         ctx.lineWidth = 2 / transform.k;
         ctx.setLineDash([20, 10]);
-        ctx.strokeRect(bX, bY, bS, bS);
+        ctx.strokeRect(-universeR, -universeR, universeR * 2, universeR * 2);
         ctx.setLineDash([]); // Reset
 
-        // Verify font size scales inverse to zoom so it stays readable
+        // Labels
         ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
         ctx.font = `bold ${24 / transform.k}px "Courier New", monospace`;
         ctx.textAlign = "center";
-
-        // Label Offset
-        const labelOff = 30 / transform.k;
-
-        // Top Label
-        ctx.fillText(">> WARNING: DEEP SPACE <<", simCenterX, bY - labelOff);
-        // Bottom Label
         ctx.fillText(
             ">> WARNING: DEEP SPACE <<",
-            simCenterX,
-            bY + bS + labelOff * 2
+            0,
+            -universeR - 30 / transform.k
         );
-
-        // Draw Links
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-        ctx.beginPath();
-        links.forEach((/** @type {any} */ d) => {
-            ctx.moveTo(d.source.x, d.source.y);
-            ctx.lineTo(d.target.x, d.target.y);
-        });
-        ctx.stroke();
-
-        // Draw Nodes
-        nodes.forEach((/** @type {any} */ d) => {
-            ctx.beginPath();
-            ctx.arc(d.x, d.y, d.radius, 0, 2 * Math.PI);
-
-            if (d.type === "star") {
-                // Glow effect for Stars
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = d.glow;
-                ctx.fillStyle = d.color;
-            } else {
-                // Planet Gradient
-                ctx.shadowBlur = 0;
-                const grad = ctx.createRadialGradient(
-                    d.x,
-                    d.y,
-                    d.radius * 0.2,
-                    d.x,
-                    d.y,
-                    d.radius
-                );
-                grad.addColorStop(0, "#fff"); // Highlight
-                grad.addColorStop(0.5, d.color);
-                grad.addColorStop(1, "#000"); // Shadow side
-                ctx.fillStyle = grad;
-            }
-
-            ctx.fill();
-            ctx.shadowBlur = 0; // Reset
-
-            // Text Label
-            if (
-                d.type === "star" ||
-                (transform.k > 1.5 && d.type === "planet")
-            ) {
-                ctx.fillStyle = "#fff";
-                ctx.font = `${12 / transform.k}px Arial`; // Scale text inverse to zoom
-                ctx.fillText(d.name, d.x + d.radius + 5, d.y + 4);
-            }
-        });
 
         ctx.restore();
     }
 
-    // Interaction
+    /**
+     * @param {any} node
+     */
+    function drawOrbits(node) {
+        if (!node || !ctx) {
+            return;
+        }
+        if (node.children) {
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+            ctx.lineWidth = 1 / transform.k;
+
+            node.children.forEach((/** @type {any} */ child) => {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, child.orbitRadius, 0, Math.PI * 2);
+                ctx.stroke();
+                drawOrbits(child);
+            });
+        }
+    }
+
+    /**
+     * @param {any} node
+     */
+    function drawLinks(node) {
+        if (!node || !ctx) {
+            return;
+        }
+        if (node.children) {
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+            ctx.lineWidth = 1 / transform.k;
+            node.children.forEach((/** @type {any} */ child) => {
+                ctx.beginPath();
+                ctx.moveTo(node.x, node.y);
+                ctx.lineTo(child.x, child.y);
+                ctx.stroke();
+                drawLinks(child);
+            });
+        }
+    }
+
+    /**
+     * @param {any} node
+     */
+    function drawNodes(node) {
+        if (!node || !ctx) {
+            return;
+        }
+
+        // Draw Self
+        ctx.beginPath();
+        // Root Node Special Logic?
+        if (node.depth === 0) {
+            // Galactic Center - Invisible or Glowy
+            ctx.fillStyle = "#000";
+            ctx.arc(node.x, node.y, node.radius, 0, 2 * Math.PI);
+            ctx.fill();
+            // Accretion Disk Ring
+            ctx.strokeStyle = node.glow;
+            ctx.lineWidth = 2 / transform.k;
+            ctx.stroke();
+        } else {
+            ctx.arc(node.x, node.y, node.radius, 0, 2 * Math.PI);
+
+            if (node.type === "star") {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = node.glow;
+                ctx.fillStyle = node.color;
+            } else {
+                ctx.shadowBlur = 0;
+                const grad = ctx.createRadialGradient(
+                    node.x,
+                    node.y,
+                    node.radius * 0.2,
+                    node.x,
+                    node.y,
+                    node.radius
+                );
+                grad.addColorStop(0, "#fff"); // Highlight
+                grad.addColorStop(0.5, node.color);
+                grad.addColorStop(1, "#000"); // Shadow side
+                ctx.fillStyle = grad;
+            }
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Text Label
+            if (node.type === "star" || transform.k > 1.5) {
+                ctx.fillStyle = "#fff";
+                ctx.font = `${12 / transform.k}px Arial`;
+                ctx.fillText(node.name, node.x + node.radius + 5, node.y + 4);
+            }
+        }
+
+        // Draw Children
+        if (node.children) {
+            node.children.forEach((/** @type {any} */ child) =>
+                drawNodes(child)
+            );
+        }
+    }
+
+    // Interaction Overhaul for Recursive Structure
+    // Since 'nodes' array is gone, we need to flatten for hit testing OR traverse.
+    // Flattening for hit test is easier.
+    /**
+     * @param {any} node
+     * @param {any[]} [list]
+     */
+    function getAllNodes(node, list = []) {
+        if (node) {
+            list.push(node);
+            if (node.children) {
+                node.children.forEach((/** @type {any} */ c) =>
+                    getAllNodes(c, list)
+                );
+            }
+        }
+        return list;
+    }
 
     const tooltip = document.createElement("div");
     tooltip.className = "tooltip";
@@ -334,11 +577,15 @@ const d3 = window.d3;
 
     // Mouse Move needs to account for Transform
     canvas.addEventListener("mousemove", (e) => {
-        // Invert transform to find graph coordinates
-        const x = (e.clientX - transform.x) / transform.k;
-        const y = (e.clientY - transform.y) / transform.k;
+        // Adjust for centered origin
+        const cx = width / 2;
+        const cy = height / 2;
 
-        const hoveredNode = nodes.find((node) => {
+        const x = (e.clientX - cx - transform.x) / transform.k;
+        const y = (e.clientY - cy - transform.y) / transform.k;
+
+        const allNodes = getAllNodes(rootNode);
+        const hoveredNode = allNodes.find((node) => {
             const dx = node.x - x;
             const dy = node.y - y;
             return Math.sqrt(dx * dx + dy * dy) < node.radius + 3;
@@ -367,23 +614,190 @@ const d3 = window.d3;
     });
 
     canvas.addEventListener("click", (e) => {
-        // Prevent click if we were dragging (simple check: zoom event usually captures click, but let's be safe)
-        // For d3 zoom to work nicely with click, we usually check if dx/dy was small
+        const cx = width / 2;
+        const cy = height / 2;
+        const x = (e.clientX - cx - transform.x) / transform.k;
+        const y = (e.clientY - cy - transform.y) / transform.k;
 
-        const x = (e.clientX - transform.x) / transform.k;
-        const y = (e.clientY - transform.y) / transform.k;
-
-        const clickedNode = nodes.find((node) => {
+        const allNodes = getAllNodes(rootNode);
+        const clickedNode = allNodes.find((node) => {
             const dx = node.x - x;
             const dy = node.y - y;
             return Math.sqrt(dx * dx + dy * dy) < node.radius + 5;
         });
 
-        if (clickedNode && clickedNode.type === "planet") {
-            vscode.postMessage({
-                type: "onOpenFile",
-                value: clickedNode.path,
-            });
+        if (clickedNode) {
+            if (clickedNode.type === "planet") {
+                vscode.postMessage({
+                    type: "onOpenFile",
+                    value: clickedNode.path,
+                });
+            } else {
+                // Is a Star (Folder) -> Fly To Logic
+                flyTo(clickedNode);
+            }
         }
     });
+
+    /**
+     * @param {any} node
+     */
+    function flyTo(node) {
+        // Calculate offsets to center the node
+        // We want: transform.k * node.x + transform.x = width/2
+        // So: transform.x = width/2 - transform.k * node.x
+
+        const targetScale = 1.5; // Zoom in level
+        const duration = 1500;
+
+        // Use d3 transition on the canvas selection to drive the zoom transform
+        d3.select(canvas).transition().duration(duration).call(
+            zoom.transform,
+            d3.zoomIdentity.scale(targetScale).translate(-node.x, -node.y) // Move node to center
+        );
+    }
+
+    // --- Context Menu ---
+    /** @type {{action: string, sourcePath: string} | null} */
+    let clipboard = null;
+    const contextMenu = document.createElement("div");
+    contextMenu.className = "context-menu";
+    document.body.appendChild(contextMenu);
+
+    document.addEventListener("click", () => {
+        contextMenu.style.display = "none";
+    });
+
+    canvas.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const cx = width / 2;
+        const cy = height / 2;
+        const x = (e.clientX - cx - transform.x) / transform.k;
+        const y = (e.clientY - cy - transform.y) / transform.k;
+
+        const allNodes = getAllNodes(rootNode);
+        const clickedNode = allNodes.find((node) => {
+            const dx = node.x - x;
+            const dy = node.y - y;
+            return Math.sqrt(dx * dx + dy * dy) < node.radius + 5;
+        });
+
+        showContextMenu(e.clientX, e.clientY, clickedNode);
+    });
+
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {any} node
+     */
+    function showContextMenu(x, y, node) {
+        contextMenu.style.display = "block";
+        contextMenu.style.left = x + "px";
+        contextMenu.style.top = y + "px";
+        contextMenu.innerHTML = "";
+
+        /**
+         * @param {string} label
+         * @param {() => void} onClick
+         * @param {boolean} [disabled]
+         */
+        const addItem = (label, onClick, disabled = false) => {
+            const item = document.createElement("div");
+            item.className =
+                "context-menu-item" + (disabled ? " disabled" : "");
+            item.innerText = label;
+            if (!disabled) {
+                item.onclick = onClick;
+            }
+            contextMenu.appendChild(item);
+        };
+
+        const addSeparator = () => {
+            const sep = document.createElement("div");
+            sep.className = "context-menu-separator";
+            contextMenu.appendChild(sep);
+        };
+
+        // If clicked background, offer creating in Root (if available)
+        if (!node) {
+            if (rootNode) {
+                addItem("New File (Root)", () => {
+                    vscode.postMessage({
+                        type: "createFile",
+                        value: rootNode.path,
+                    });
+                });
+                addItem("New Folder (Root)", () => {
+                    vscode.postMessage({
+                        type: "createFolder",
+                        value: rootNode.path,
+                    });
+                });
+                if (clipboard && clipboard.action === "move") {
+                    const sourcePath = clipboard.sourcePath;
+                    addSeparator();
+                    addItem(
+                        `Paste '${sourcePath.split(/[/\\]/).pop()}' in Root`,
+                        () => {
+                            vscode.postMessage({
+                                type: "moveFile",
+                                value: {
+                                    source: sourcePath,
+                                    destination: rootNode.path,
+                                },
+                            });
+                            clipboard = null;
+                        }
+                    );
+                }
+            } else {
+                contextMenu.style.display = "none";
+            }
+            return;
+        }
+
+        const isFolder =
+            node.type === "star" ||
+            node === rootNode ||
+            (node.children && node.children.length >= 0);
+
+        // Folder Actions
+        if (isFolder) {
+            addItem("New File", () => {
+                vscode.postMessage({ type: "createFile", value: node.path });
+            });
+            addItem("New Folder", () => {
+                vscode.postMessage({ type: "createFolder", value: node.path });
+            });
+            addSeparator();
+            if (clipboard && clipboard.action === "move") {
+                const sourcePath = clipboard.sourcePath;
+                addItem(`Paste '${sourcePath.split(/[/\\]/).pop()}'`, () => {
+                    vscode.postMessage({
+                        type: "moveFile",
+                        value: {
+                            source: sourcePath,
+                            destination: node.path,
+                        },
+                    });
+                    clipboard = null;
+                });
+                addSeparator();
+            }
+        }
+
+        // Item Actions (Rename, Delete, Cut)
+        if (node !== rootNode) {
+            addItem("Rename", () => {
+                vscode.postMessage({ type: "renameFile", value: node.path });
+            });
+            addItem("Cut", () => {
+                clipboard = { action: "move", sourcePath: node.path };
+            });
+            addSeparator();
+            addItem("Delete", () => {
+                vscode.postMessage({ type: "deleteFile", value: node.path });
+            });
+        }
+    }
 })();

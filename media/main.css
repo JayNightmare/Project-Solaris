@@ -38,3 +38,74 @@ canvas {
     transition: opacity 0.5s ease;
     pointer-events: none;
 }
+
+.context-menu {
+    position: absolute;
+    background: #252526;
+    border: 1px solid #454545;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    padding: 4px 0;
+    z-index: 100;
+    display: none;
+    min-width: 160px;
+    border-radius: 4px;
+}
+
+.context-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: #cccccc;
+    font-size: 13px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    transition: background 0.1s;
+    display: flex;
+    align-items: center;
+}
+
+.context-menu-item:hover {
+    background: #094771;
+    color: white;
+}
+
+.context-menu-separator {
+    height: 1px;
+    background: #454545;
+    margin: 4px 0;
+}
+
+.context-menu-item.disabled {
+    color: #666;
+    cursor: default;
+}
+
+.context-menu-item.disabled:hover {
+    background: transparent;
+}
+
+.controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    color: #eee;
+    font-family: 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.controls label {
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.controls input[type=range] {
+    width: 150px;
+    cursor: pointer;
+}

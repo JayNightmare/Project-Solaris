@@ -294,7 +294,6 @@ const d3 = window.d3;
             // Distribute children in orbits
             // Simple approach: Place them all on Rings based on their index?
             // Or one ring per depth?
-            // User wants "orbiting objects", implies moving.
             // Let's create varying orbit radii so they don't collide too much.
 
             node.children.forEach(
